@@ -40,7 +40,7 @@ public class CustomAdapter extends RecyclerView.Adapter<CustomAdapter.ViewHolder
 
         TagDetails tag = list.get(position);
 
-        holder.sn_no.setText(""+tag.getSn_no());
+        holder.sn_no.setText(String.valueOf(tag.getSn_no()));
         holder.username.setText(tag.getUser_name());
         holder.tag_id.setText(tag.getTag_id());
         holder.time_stamp.setText(tag.getTime_stamp());

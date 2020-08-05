@@ -1,6 +1,8 @@
 package com.example.usertracker;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.app.Dialog;
 import android.content.SharedPreferences;
@@ -18,6 +20,7 @@ import com.android.volley.Request;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
+import com.example.usertracker.Adapters.CustomAdapter;
 import com.example.usertracker.Models.TagDetails;
 
 import java.util.Calendar;
@@ -26,6 +29,10 @@ public class MainActivity extends AppCompatActivity {
 
     SQLiteDatabase database;
     MySQLHelper helper;
+    RecyclerView rv_main;
+    CustomAdapter adapter;
+
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -41,11 +48,23 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    //Function for setting Recycler View
+    private void setRecyclerView() {
+
+        adapter = new CustomAdapter(this,GlobalData.list);
+        rv_main.setHasFixedSize(true);
+        rv_main.setLayoutManager(new LinearLayoutManager(this,LinearLayoutManager.VERTICAL,false));
+        rv_main.setAdapter(adapter);
+        adapter.notifyDataSetChanged();
+
+    }
+
 
     //Function for getting references of all data
     private void getReferences() {
         helper = new MySQLHelper(this);
         database = helper.getWritableDatabase();
+        rv_main=findViewById(R.id.rv_main);
     }
 
 
@@ -63,7 +82,6 @@ public class MainActivity extends AppCompatActivity {
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putString("date",todayDate);
             editor.apply();
-
             return false;
         }
 
@@ -108,13 +126,15 @@ public class MainActivity extends AppCompatActivity {
             public void onClick(View view) {
 
                 dialog.dismiss();
-                if (checkDate()){
-                    helper.insertData(username,tag_id,timeStamp,database);
-                    fetchDataFromSQL();
-                    Toast.makeText(MainActivity.this, ""+GlobalData.list, Toast.LENGTH_SHORT).show();
-                }else{
-                    Toast.makeText(MainActivity.this, "New Data Will Show", Toast.LENGTH_SHORT).show();
+
+                if(!checkDate()){
+                    String table_name = "USERS";
+                    database.execSQL("DROP TABLE " + table_name);
                 }
+
+                helper.insertData(username,tag_id,timeStamp,database);
+                fetchDataFromSQL();
+                setRecyclerView();
             }
         });
 
