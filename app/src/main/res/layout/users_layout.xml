@@ -24,7 +24,7 @@
             android:layout_height="wrap_content"
             android:textSize="15sp"
             android:text="S.No"
-            android:gravity="center"
+            android:textAlignment="center"
             android:textColor="@color/black"/>
 
         <TextView
@@ -34,7 +34,7 @@
             android:layout_height="wrap_content"
             android:textSize="15sp"
             android:text="User name"
-            android:gravity="center"
+            android:textAlignment="center"
             android:textColor="@color/black"/>
 
         <TextView
@@ -44,7 +44,7 @@
             android:layout_height="wrap_content"
             android:textSize="15sp"
             android:text="Tag ID"
-            android:gravity="center"
+            android:textAlignment="center"
             android:textColor="@color/black"/>
 
         <TextView
@@ -54,7 +54,7 @@
             android:layout_height="wrap_content"
             android:textSize="15sp"
             android:text="Time Stamp"
-            android:gravity="center"
+            android:textAlignment="center"
             android:textColor="@color/black"/>
 
     </LinearLayout>

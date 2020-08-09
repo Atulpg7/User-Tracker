@@ -18,7 +18,7 @@ public class MySQLHelper extends SQLiteOpenHelper {
     @Override
     public void onCreate(SQLiteDatabase sqLiteDatabase) {
 
-        String sql = "CREATE TABLE USERS (_id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT,tagID TEXT, timeStamp TEXT )";
+        String sql = "CREATE TABLE USERS (_id INTEGER PRIMARY KEY AUTOINCREMENT, userId TEXT,name TEXT,tagId TEXT,flagField TEXT,insertTime TEXT )";
         sqLiteDatabase.execSQL(sql);
 
     }
@@ -29,14 +29,17 @@ public class MySQLHelper extends SQLiteOpenHelper {
     }
 
 
-    public void insertData(String username,String tag,String timeStamp,SQLiteDatabase database){
+    //Function for inserting data
+    public void insertData(String id, String name, String tag_id, String flag, String insert_time, SQLiteDatabase database) {
+
         ContentValues values = new ContentValues();
 
-        values.put("username",username);
-        values.put("tagID",tag);
-        values.put("timeStamp",timeStamp);
+        values.put("userId",id);
+        values.put("name",name);
+        values.put("tagId",tag_id);
+        values.put("flagField",flag);
+        values.put("insertTime",insert_time);
 
         database.insert("USERS",null,values);
-
     }
 }

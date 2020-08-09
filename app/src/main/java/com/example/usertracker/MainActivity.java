@@ -5,32 +5,74 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import android.app.Dialog;
+import android.app.ProgressDialog;
 import android.content.SharedPreferences;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.Handler;
 import android.provider.Settings;
+import android.util.Log;
 import android.view.View;
 import android.view.Window;
 import android.widget.Button;
+import android.widget.EditText;
+import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import com.android.volley.AuthFailureError;
 import com.android.volley.Request;
+import com.android.volley.RequestQueue;
 import com.android.volley.Response;
 import com.android.volley.VolleyError;
+import com.android.volley.toolbox.JsonObjectRequest;
 import com.android.volley.toolbox.StringRequest;
+import com.android.volley.toolbox.Volley;
 import com.example.usertracker.Adapters.CustomAdapter;
 import com.example.usertracker.Models.TagDetails;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.util.Calendar;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Timer;
+import java.util.TimerTask;
 
 public class MainActivity extends AppCompatActivity {
 
+    //Recycler view Part variables
     SQLiteDatabase database;
     MySQLHelper helper;
     RecyclerView rv_main;
     CustomAdapter adapter;
+
+    //If no data present in Database
+    TextView txt_no_data_found;
+
+    //Server variables
+    boolean isResponse;
+    TagDetails details;
+
+
+    //Configuration of IP Address
+    EditText ip_address;
+    TextView btn_save;
+    ImageView settings_icon;
+
+
+    //Extra
+    ProgressDialog dialog;
+    Handler handler;
+    Runnable runnable;
+
+    //Shared Preferences for date and ip Address
+    SharedPreferences sharedPreferences;
+    SharedPreferences.Editor editor;
 
 
 
@@ -40,31 +82,245 @@ public class MainActivity extends AppCompatActivity {
         setContentView(R.layout.activity_main);
 
         getReferences();
+        setBtnClicks();
 
-        showDialog("A2X58B9","Henry","2020-07-02 12:00:PM");
+        new fetchData().execute();
 
-        //getData();
-
-
-    }
-
-    //Function for setting Recycler View
-    private void setRecyclerView() {
-
-        adapter = new CustomAdapter(this,GlobalData.list);
-        rv_main.setHasFixedSize(true);
-        rv_main.setLayoutManager(new LinearLayoutManager(this,LinearLayoutManager.VERTICAL,false));
-        rv_main.setAdapter(adapter);
-        adapter.notifyDataSetChanged();
+        setTimer();
 
     }
 
+
+    //Function for hitting the API after every 30 Seconds
+    private void setTimer() {
+        handler = new Handler();
+        final int delay = 30000; //milliseconds
+        runnable = new Runnable() {
+            @Override
+            public void run() {
+                new fetchData().execute();
+                handler.postDelayed(this, delay);
+            }
+        };
+        handler.postDelayed(runnable, delay);
+    }
+
+
+    //Function for all button clicks
+    private void setBtnClicks() {
+
+                settings_icon.setOnClickListener(new View.OnClickListener() {
+                    @Override
+                    public void onClick(View view) {
+
+                        if (btn_save.getVisibility() == View.VISIBLE) {
+                            btn_save.setVisibility(View.GONE);
+                            ip_address.setVisibility(View.GONE);
+                        } else {
+                            btn_save.setVisibility(View.VISIBLE);
+                            ip_address.setVisibility(View.VISIBLE);
+                            String IP = sharedPreferences.getString("ip_address","null");
+
+                            if(!IP.equals("null"))
+                                ip_address.setText(IP);
+                            else
+                                ip_address.setText(GlobalData.getIP());
+
+                            Log.e("Setting IP==>",IP);
+
+                        }
+                    }
+                });
+
+        btn_save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                setIpAddress(ip_address.getText().toString());
+                Toast.makeText(MainActivity.this, "IP Address Updated", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+
+    //Receiving data from  Server / API
+    class fetchData extends AsyncTask<Void, Void, Void> {
+
+
+        @Override
+        protected void onPreExecute() {
+            super.onPreExecute();
+            dialog.setMessage("Checking Data....");
+            dialog.setCancelable(false);
+            dialog.setCanceledOnTouchOutside(false);
+            dialog.show();
+        }
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+
+
+
+            String ip = sharedPreferences.getString("ip_address","null");
+
+            String URL = GlobalData.getURL();
+            if(!ip.equals("null"))
+                URL = GlobalData.BASE_URL+ip+GlobalData.SUB_URL;
+
+            Log.e("BASE URL==>",URL);
+
+            StringRequest request = new StringRequest(Request.Method.GET, URL, new Response.Listener<String>() {
+                @Override
+                public void onResponse(String response) {
+
+
+
+                    Log.e("Simple Response:==> ", response);
+
+                    if (response.length() < 3) {
+
+                        if (dialog.isShowing())
+                            dialog.dismiss();
+
+                        if (!checkDate()) {
+                            String table_name = "USERS";
+                            String clearDBQuery = " DELETE FROM " + table_name;
+                            database.execSQL(clearDBQuery);
+                        }
+
+                        Toast.makeText(MainActivity.this, "No new Tag Found....", Toast.LENGTH_SHORT).show();
+
+                        fetchDataFromSQL();
+
+                    } else {
+
+                        try {
+                            JSONArray array = new JSONArray(response);
+
+                            for (int i = 0; i < array.length(); i++) {
+
+                                JSONObject object = new JSONObject(array.get(i).toString());
+
+                                String id = object.getString("id");
+                                String name = object.getString("user");
+                                String tag_id = object.getString("tag_id");
+                                String flag = object.getString("flag");
+                                String insert_time = object.getString("insert_time");
+                                details = new TagDetails(id, name, tag_id, flag, insert_time);
+                                new sendFeedback().execute();
+                            }
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+                    }
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    dialog.dismiss();
+                    Toast.makeText(MainActivity.this, "Please Check IP Address", Toast.LENGTH_SHORT).show();
+                    txt_no_data_found.setVisibility(View.VISIBLE);
+                    rv_main.setVisibility(View.GONE);
+                }
+            }) {
+                @Override
+                public Map<String, String> getHeaders() throws AuthFailureError {
+                    Map<String, String> params = new HashMap<>();
+                    params.put("reader", "0");
+                    Log.e("Sending Data:==> ", params.toString());
+                    return params;
+                }
+            };
+
+            RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
+            requestQueue.add(request);
+            return null;
+        }
+    }
+
+
+    //Sending feedback again to the server when received the data
+    class sendFeedback extends AsyncTask<Void, Void, Void> {
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+
+            String ip = sharedPreferences.getString("ip_address","null");
+
+            String URL = GlobalData.getURL();
+
+            if(!ip.equals("null"))
+                URL = GlobalData.BASE_URL+ip+GlobalData.SUB_URL;
+
+            Log.e("Feedback URL==>",URL);
+
+            JSONObject object = new JSONObject();
+            try {
+
+                object.put("reader", "1");
+                object.put("id", details.getId());
+
+
+            } catch (Exception e) {
+                Log.e("Exception :==>", e.toString());
+            }
+
+
+            JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, URL, object, new Response.Listener<JSONObject>() {
+                @Override
+                public void onResponse(JSONObject response) {
+
+             Log.e("Feedback Response:==> ", response.toString());
+
+             try {
+                        if (response.getString("status").equals("0")) {
+
+                            showDialog(details.getId(), details.getName(), details.getTag_id(), details.getFlag(), details.getInsertTime());
+
+                        } else {
+                            Toast.makeText(MainActivity.this, "Try Again !!!", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    //Log.e("Error:==> ", error.toString());
+                    Toast.makeText(MainActivity.this, "Please Check IP Address", Toast.LENGTH_SHORT).show();
+                    txt_no_data_found.setVisibility(View.VISIBLE);
+                    rv_main.setVisibility(View.GONE);
+                }
+            });
+
+            RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
+            requestQueue.add(request);
+            return null;
+        }
+
+        @Override
+        protected void onPostExecute(Void aVoid) {
+            super.onPostExecute(aVoid);
+            dialog.dismiss();
+        }
+    }
+    
 
     //Function for getting references of all data
     private void getReferences() {
-        helper = new MySQLHelper(this);
+        helper = new MySQLHelper(MainActivity.this);
         database = helper.getWritableDatabase();
-        rv_main=findViewById(R.id.rv_main);
+        rv_main = findViewById(R.id.rv_main);
+        ip_address = findViewById(R.id.ip_address);
+        btn_save = findViewById(R.id.btn_save);
+        settings_icon = findViewById(R.id.settings_icon);
+        txt_no_data_found = findViewById(R.id.txt_no_data_found);
+        dialog = new ProgressDialog(MainActivity.this);
+
+        sharedPreferences = getSharedPreferences("MyPref", MODE_PRIVATE);
     }
 
 
@@ -72,15 +328,15 @@ public class MainActivity extends AppCompatActivity {
     private boolean checkDate() {
 
         Calendar c = Calendar.getInstance();
-        SharedPreferences sharedPreferences = getSharedPreferences("MyPref",MODE_PRIVATE);
-
-        String oldDate = sharedPreferences.getString("date","null");
+        String oldDate = sharedPreferences.getString("date", "null");
         String todayDate = c.get(Calendar.YEAR) + "-" + c.get(Calendar.MONTH) + "-" + c.get(Calendar.DAY_OF_MONTH);
 
-        if(!oldDate.equals(todayDate)){
+        Log.e("Old Date: ",oldDate);
+        Log.e("Today's Date: ",todayDate);
 
-            SharedPreferences.Editor editor = sharedPreferences.edit();
-            editor.putString("date",todayDate);
+        if (!oldDate.equals(todayDate)) {
+            editor = sharedPreferences.edit();
+            editor.putString("date", todayDate);
             editor.apply();
             return false;
         }
@@ -89,36 +345,19 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    //Receiving data from  Server / API
-    private void fetchData() {
-
-        StringRequest request = new StringRequest(Request.Method.GET, GlobalData.default_url, new Response.Listener<String>() {
-            @Override
-            public void onResponse(String response) {
-                Toast.makeText(MainActivity.this, "Response: "+response, Toast.LENGTH_SHORT).show();
-            }
-        }, new Response.ErrorListener() {
-            @Override
-            public void onErrorResponse(VolleyError error) {
-                Toast.makeText(MainActivity.this, "Error: "+error, Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-
-    public void showDialog(final String tag_id, final String username, final String timeStamp){
+    //Dialog box if any new Tag found
+    public void showDialog(final String id, final String name, final String tag_id, final String flag, final String insert_time) {
         final Dialog dialog = new Dialog(MainActivity.this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
         dialog.setCancelable(false);
         dialog.setContentView(R.layout.custom_dialog_box);
 
         TextView btn_ok = dialog.findViewById(R.id.btn_ok);
-        final TextView tv_tag_ig =  dialog.findViewById(R.id.txt_tag);
+        final TextView tv_tag_ig = dialog.findViewById(R.id.txt_tag);
         final TextView tv_username = dialog.findViewById(R.id.txt_username);
 
         tv_tag_ig.setText(tag_id);
-        tv_username.setText(username);
-
+        tv_username.setText(name);
 
 
         btn_ok.setOnClickListener(new View.OnClickListener() {
@@ -127,40 +366,93 @@ public class MainActivity extends AppCompatActivity {
 
                 dialog.dismiss();
 
-                if(!checkDate()){
-                    String table_name = "USERS";
-                    database.execSQL("DROP TABLE " + table_name);
-                }
+                if (!checkDate()) {
 
-                helper.insertData(username,tag_id,timeStamp,database);
+                    String table_name = "USERS";
+                    String clearDBQuery = " DELETE FROM " + table_name;
+                    database.execSQL(clearDBQuery);
+
+                }
+                helper.insertData(id, name, tag_id, flag, insert_time, database);
                 fetchDataFromSQL();
-                setRecyclerView();
             }
         });
 
-
         dialog.show();
-
     }
+
 
     //Fetching Stored Users
     private void fetchDataFromSQL() {
 
-        Cursor cursor = database.rawQuery("Select * from USERS",new String[]{});
+        Cursor cursor = database.rawQuery("Select * from USERS", new String[]{});
         GlobalData.list.clear();
 
-        if (cursor!=null)
-            cursor.moveToFirst();
+        if (cursor != null)
+            if (cursor.moveToFirst()) {
+                int i=1;
+                do {
+                    int sno = i++;
+                    String id = cursor.getString(1);
+                    String name = cursor.getString(2);
+                    String tag_id = cursor.getString(3);
+                    String flag = cursor.getString(4);
+                    String insertTime = cursor.getString(5);
 
-        do {
-            int sno = cursor.getInt(0);
-            String username = cursor.getString(1);
-            String tag_id = cursor.getString(2);
-            String timeStamp = cursor.getString(3);
+                    TagDetails details = new TagDetails(id, name, tag_id, flag, insertTime);
+                    details.setS_no(sno);
+                    GlobalData.list.add(details);
 
-            TagDetails details = new TagDetails(tag_id,username,timeStamp,sno);
-            GlobalData.list.add(details);
+                } while (cursor.moveToNext());
+            }
 
-        }while (cursor.moveToNext());
+
+        if (GlobalData.list.size() == 0) {
+           // Toast.makeText(this, "No record Found!", Toast.LENGTH_SHORT).show();
+            txt_no_data_found.setVisibility(View.VISIBLE);
+            rv_main.setVisibility(View.GONE);
+        } else {
+            txt_no_data_found.setVisibility(View.GONE);
+            rv_main.setVisibility(View.VISIBLE);
+            setRecyclerView();
+        }
+    }
+
+
+    //Setting Ip Address Data
+    private void setIpAddress(String called_ip) {
+        String ip = sharedPreferences.getString("ip_address","null");
+        editor = sharedPreferences.edit();
+
+        if(ip.equals("null")) {
+            editor.putString("ip_address", GlobalData.getIP());
+        }
+        else{
+            editor.putString("ip_address", called_ip);
+        }
+
+        editor.apply();
+
+        Log.e("Ip==>","New "+ip);
+    }
+
+
+    //Function for setting Recycler View
+    private void setRecyclerView() {
+
+        adapter = new CustomAdapter(this, GlobalData.list);
+        rv_main.setHasFixedSize(true);
+        rv_main.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
+        rv_main.setAdapter(adapter);
+        adapter.notifyDataSetChanged();
+
+    }
+
+
+    //Closing all handler on activity destroy
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        handler.removeCallbacks(runnable);
     }
 }
