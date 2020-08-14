@@ -10,6 +10,7 @@ public class GlobalData {
     public static String BASE_URL = "http://";
     public  static String IP = "172.104.40.208";
     public static String SUB_URL ="/exe_api/tag_api.php";
+    public static String SUB_URL_2 ="/exe_api/enrollment_api.php";
     public static List<TagDetails> list = new ArrayList<>();
 
     public static String getIP() {
@@ -23,5 +24,12 @@ public class GlobalData {
     public static String getURL(){
         return BASE_URL+IP+SUB_URL;
     }
+
+
+    public static String getNewURl(){
+        return BASE_URL+IP+SUB_URL_2;
+    }
+
+
 
 }

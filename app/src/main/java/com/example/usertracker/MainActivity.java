@@ -67,8 +67,9 @@ public class MainActivity extends AppCompatActivity {
 
     //Extra
     ProgressDialog dialog;
-    Handler handler;
-    Runnable runnable;
+    Handler handler_tag,handler_ue;
+    Runnable runnable_tag,runnable_ue;
+
 
     //Shared Preferences for date and ip Address
     SharedPreferences sharedPreferences;
@@ -85,64 +86,245 @@ public class MainActivity extends AppCompatActivity {
         setBtnClicks();
 
         new fetchData().execute();
+        new fetchNewTag().execute();
 
-        setTimer();
+        setTimerForTag();
+        setTimerForUE();
 
     }
 
+    //Function for hitting the Tag fetching API after every 1 Minute
+    private void setTimerForUE() {
+        handler_ue = new Handler();
+        final int delay = 10000; //milliseconds
+        runnable_ue = new Runnable() {
+            @Override
+            public void run() {
+                new fetchNewTag().execute();
+                handler_ue.postDelayed(this, delay);
+            }
+        };
+        handler_ue.postDelayed(runnable_ue, delay);
+    }
 
-    //Function for hitting the API after every 30 Seconds
-    private void setTimer() {
-        handler = new Handler();
-        final int delay = 30000; //milliseconds
-        runnable = new Runnable() {
+
+    //Function for hitting the User Enrollment API after every 10 Secong
+    private void setTimerForTag() {
+        handler_tag = new Handler();
+        final int delay = 60000; //milliseconds
+        runnable_tag = new Runnable() {
             @Override
             public void run() {
                 new fetchData().execute();
-                handler.postDelayed(this, delay);
+                handler_tag.postDelayed(this, delay);
             }
         };
-        handler.postDelayed(runnable, delay);
+        handler_tag.postDelayed(runnable_tag, delay);
     }
 
 
-    //Function for all button clicks
-    private void setBtnClicks() {
+    //class for send Name with TagId
+    class fetchNewTag extends AsyncTask<Void,Void,Void>{
 
-                settings_icon.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View view) {
+        @Override
+        protected Void doInBackground(Void... voids) {
 
-                        if (btn_save.getVisibility() == View.VISIBLE) {
-                            btn_save.setVisibility(View.GONE);
-                            ip_address.setVisibility(View.GONE);
-                        } else {
-                            btn_save.setVisibility(View.VISIBLE);
-                            ip_address.setVisibility(View.VISIBLE);
-                            String IP = sharedPreferences.getString("ip_address","null");
 
-                            if(!IP.equals("null"))
-                                ip_address.setText(IP);
-                            else
-                                ip_address.setText(GlobalData.getIP());
 
-                            Log.e("Setting IP==>",IP);
+            String ip = sharedPreferences.getString("ip_address","null");
 
-                        }
+            String URL = GlobalData.getNewURl();
+            if(!ip.equals("null"))
+                URL = GlobalData.BASE_URL+ip+GlobalData.SUB_URL_2;
+
+            Log.e("UE Fetch BASE URL==>",URL);
+
+            StringRequest request = new StringRequest(Request.Method.GET, URL, new Response.Listener<String>() {
+                @Override
+                public void onResponse(String response) {
+
+                    Log.e("UE Fetch Response:==> ", response);
+
+                    try {
+
+                        JSONObject jsonObject = new JSONObject(response);
+
+                        String tag_id= jsonObject.getString("tag_id");
+                        //String flag= jsonObject.getString("flag");
+
+                        showUserEnrollmentPopup(tag_id);
+
+
+
+                    } catch (JSONException e) {
+                        e.printStackTrace();
                     }
-                });
 
-        btn_save.setOnClickListener(new View.OnClickListener() {
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    //Toast.makeText(MainActivity.this, "Please Check IP Address", Toast.LENGTH_SHORT).show();
+                    Log.e("UE Fetch Error:==> ", error+"");
+                }
+            }); //{
+//                @Override
+//                public Map<String, String> getHeaders() throws AuthFailureError {
+//                    Map<String, String> params = new HashMap<>();
+//                    params.put("reader", "0");
+//                    Log.e("Sending Data:==> ", params.toString());
+//                    return params;
+//                }
+ //           };
+
+            RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
+            requestQueue.add(request);
+            return null;
+        }
+    }
+
+
+    //Popup for User Enrollment
+    private void showUserEnrollmentPopup(final String tag_id) {
+
+        final Dialog dialog = new Dialog(MainActivity.this);
+        dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
+        dialog.setCancelable(false);
+        dialog.setContentView(R.layout.custom_dialog_box_sending);
+
+        TextView btn_ok = dialog.findViewById(R.id.btn_ok);
+        final TextView tv_tag_ig = dialog.findViewById(R.id.txt_tag);
+        final EditText et_username = dialog.findViewById(R.id.et_username);
+
+        tv_tag_ig.setText(tag_id);
+
+
+        btn_ok.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
-                setIpAddress(ip_address.getText().toString());
-                Toast.makeText(MainActivity.this, "IP Address Updated", Toast.LENGTH_SHORT).show();
+
+                String username = et_username.getText().toString();
+
+                if(!username.equals("")) {
+
+                    new sendResponseBAckUserEnrollment(tag_id,username).execute();
+
+                    dialog.dismiss();
+                }
+                else {
+                    Toast.makeText(MainActivity.this, "Enter username !", Toast.LENGTH_SHORT).show();
+                }
+
             }
         });
+
+        dialog.show();
+
+
+    }
+
+    //Sending data again to the Server for User Enrollment
+    private class sendResponseBAckUserEnrollment extends AsyncTask<Void,Void,Void> {
+
+        String tag_id,username;
+
+        public sendResponseBAckUserEnrollment(String tag_id, String username) {
+            this.tag_id = tag_id;
+            this.username = username;
+        }
+
+        @Override
+        protected Void doInBackground(Void... voids) {
+
+            String ip = sharedPreferences.getString("ip_address","null");
+
+            String URL = GlobalData.getNewURl();
+
+            if(!ip.equals("null"))
+                URL = GlobalData.BASE_URL+ip+GlobalData.SUB_URL_2;
+
+            Log.e("Feedback URL UE==>",URL);
+
+           JSONObject object = new JSONObject();
+            try {
+
+                object.put("reader", "1");
+                object.put("tag_id", tag_id);
+                object.put("user", username);
+
+
+            } catch (Exception e) {
+                Log.e("Exception UE Json:==>", e.toString());
+            }
+
+            Log.e("Data Format:==> ", object.toString());
+
+            JsonObjectRequest request = new JsonObjectRequest(Request.Method.POST, URL, object, new Response.Listener<JSONObject>() {
+                @Override
+                public void onResponse(JSONObject response) {
+
+                    Log.e("Feedback rspnse UE:==> ", response.toString());
+
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    Log.e("Error UE:==> ", error.toString());
+                }
+            });
+
+
+
+          /*  String ip = sharedPreferences.getString("ip_address","null");
+
+            String URL = GlobalData.getNewURl();
+
+            if(!ip.equals("null"))
+                URL = GlobalData.BASE_URL+ip+GlobalData.SUB_URL_2;
+
+            Log.e("Feedback URL UE==>",URL);
+
+            StringRequest request = new StringRequest(Request.Method.GET, URL, new Response.Listener<String>() {
+                @Override
+                public void onResponse(String response) {
+
+
+                    Log.e("Feedback Rspnse UE:==> ", response);
+
+
+                }
+            }, new Response.ErrorListener() {
+                @Override
+                public void onErrorResponse(VolleyError error) {
+                    Log.e("UE error feedbk ==> ",error+"");
+                }
+            }) {
+                @Override
+                public Map<String, String> getHeaders() throws AuthFailureError {
+                    Map<String, String> params = new HashMap<>();
+                    params.put("reader", "1");
+                    params.put("tag_id", tag_id);
+                    params.put("user", username);
+                    Log.e("Sending Data UE:==> ", params.toString());
+                    return params;
+                }
+            };*/
+
+            RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
+            requestQueue.add(request);
+
+
+            return null;
+        }
     }
 
 
-    //Receiving data from  Server / API
+
+
+
+//*************    Fetching data for Tag and Username ******************* //
+
+    //Receiving data from  Server / API URL 1
     class fetchData extends AsyncTask<Void, Void, Void> {
 
 
@@ -187,8 +369,7 @@ public class MainActivity extends AppCompatActivity {
                             database.execSQL(clearDBQuery);
                         }
 
-                        Toast.makeText(MainActivity.this, "No new Tag Found....", Toast.LENGTH_SHORT).show();
-
+                       // Toast.makeText(MainActivity.this, "No new Tag Found....", Toast.LENGTH_SHORT).show();
                         fetchDataFromSQL();
 
                     } else {
@@ -238,7 +419,6 @@ public class MainActivity extends AppCompatActivity {
             return null;
         }
     }
-
 
     //Sending feedback again to the server when received the data
     class sendFeedback extends AsyncTask<Void, Void, Void> {
@@ -307,43 +487,6 @@ public class MainActivity extends AppCompatActivity {
             dialog.dismiss();
         }
     }
-    
-
-    //Function for getting references of all data
-    private void getReferences() {
-        helper = new MySQLHelper(MainActivity.this);
-        database = helper.getWritableDatabase();
-        rv_main = findViewById(R.id.rv_main);
-        ip_address = findViewById(R.id.ip_address);
-        btn_save = findViewById(R.id.btn_save);
-        settings_icon = findViewById(R.id.settings_icon);
-        txt_no_data_found = findViewById(R.id.txt_no_data_found);
-        dialog = new ProgressDialog(MainActivity.this);
-
-        sharedPreferences = getSharedPreferences("MyPref", MODE_PRIVATE);
-    }
-
-
-    //Checking today's date for refresh list
-    private boolean checkDate() {
-
-        Calendar c = Calendar.getInstance();
-        String oldDate = sharedPreferences.getString("date", "null");
-        String todayDate = c.get(Calendar.YEAR) + "-" + c.get(Calendar.MONTH) + "-" + c.get(Calendar.DAY_OF_MONTH);
-
-        Log.e("Old Date: ",oldDate);
-        Log.e("Today's Date: ",todayDate);
-
-        if (!oldDate.equals(todayDate)) {
-            editor = sharedPreferences.edit();
-            editor.putString("date", todayDate);
-            editor.apply();
-            return false;
-        }
-
-        return true;
-    }
-
 
     //Dialog box if any new Tag found
     public void showDialog(final String id, final String name, final String tag_id, final String flag, final String insert_time) {
@@ -381,7 +524,6 @@ public class MainActivity extends AppCompatActivity {
         dialog.show();
     }
 
-
     //Fetching Stored Users
     private void fetchDataFromSQL() {
 
@@ -408,7 +550,7 @@ public class MainActivity extends AppCompatActivity {
 
 
         if (GlobalData.list.size() == 0) {
-           // Toast.makeText(this, "No record Found!", Toast.LENGTH_SHORT).show();
+            // Toast.makeText(this, "No record Found!", Toast.LENGTH_SHORT).show();
             txt_no_data_found.setVisibility(View.VISIBLE);
             rv_main.setVisibility(View.GONE);
         } else {
@@ -416,6 +558,58 @@ public class MainActivity extends AppCompatActivity {
             rv_main.setVisibility(View.VISIBLE);
             setRecyclerView();
         }
+    }
+
+    //Function for setting Recycler View
+    private void setRecyclerView() {
+
+        adapter = new CustomAdapter(this, GlobalData.list);
+        rv_main.setHasFixedSize(true);
+        rv_main.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
+        rv_main.setAdapter(adapter);
+        adapter.notifyDataSetChanged();
+
+    }
+
+
+
+
+//**************** Other Functions *************** //
+
+
+    //Function for getting references of all data
+    private void getReferences() {
+        helper = new MySQLHelper(MainActivity.this);
+        database = helper.getWritableDatabase();
+        rv_main = findViewById(R.id.rv_main);
+        ip_address = findViewById(R.id.ip_address);
+        btn_save = findViewById(R.id.btn_save);
+        settings_icon = findViewById(R.id.settings_icon);
+        txt_no_data_found = findViewById(R.id.txt_no_data_found);
+        dialog = new ProgressDialog(MainActivity.this);
+
+        sharedPreferences = getSharedPreferences("MyPref", MODE_PRIVATE);
+    }
+
+
+    //Checking today's date for refresh list
+    private boolean checkDate() {
+
+        Calendar c = Calendar.getInstance();
+        String oldDate = sharedPreferences.getString("date", "null");
+        String todayDate = c.get(Calendar.YEAR) + "-" + c.get(Calendar.MONTH) + "-" + c.get(Calendar.DAY_OF_MONTH);
+
+        Log.e("Old Date: ",oldDate);
+        Log.e("Today's Date: ",todayDate);
+
+        if (!oldDate.equals(todayDate)) {
+            editor = sharedPreferences.edit();
+            editor.putString("date", todayDate);
+            editor.apply();
+            return false;
+        }
+
+        return true;
     }
 
 
@@ -437,15 +631,39 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    //Function for setting Recycler View
-    private void setRecyclerView() {
+    //Function for all button clicks
+    private void setBtnClicks() {
 
-        adapter = new CustomAdapter(this, GlobalData.list);
-        rv_main.setHasFixedSize(true);
-        rv_main.setLayoutManager(new LinearLayoutManager(this, LinearLayoutManager.VERTICAL, false));
-        rv_main.setAdapter(adapter);
-        adapter.notifyDataSetChanged();
+        settings_icon.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
 
+                if (btn_save.getVisibility() == View.VISIBLE) {
+                    btn_save.setVisibility(View.GONE);
+                    ip_address.setVisibility(View.GONE);
+                } else {
+                    btn_save.setVisibility(View.VISIBLE);
+                    ip_address.setVisibility(View.VISIBLE);
+                    String IP = sharedPreferences.getString("ip_address","null");
+
+                    if(!IP.equals("null"))
+                        ip_address.setText(IP);
+                    else
+                        ip_address.setText(GlobalData.getIP());
+
+                    Log.e("Setting IP==>",IP);
+
+                }
+            }
+        });
+
+        btn_save.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                setIpAddress(ip_address.getText().toString());
+                Toast.makeText(MainActivity.this, "IP Address Updated", Toast.LENGTH_SHORT).show();
+            }
+        });
     }
 
 
@@ -453,6 +671,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        handler.removeCallbacks(runnable);
+        handler_tag.removeCallbacks(runnable_tag);
+        handler_ue.removeCallbacks(runnable_ue);
     }
+
 }
