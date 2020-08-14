@@ -93,10 +93,10 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    //Function for hitting the Tag fetching API after every 1 Minute
+    //Function for hitting the User Enrollment API after every 30 Seconds
     private void setTimerForUE() {
         handler_ue = new Handler();
-        final int delay = 10000; //milliseconds
+        final int delay = 30000; //milliseconds
         runnable_ue = new Runnable() {
             @Override
             public void run() {
@@ -108,7 +108,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
 
-    //Function for hitting the User Enrollment API after every 10 Secong
+    //Function for hitting the Tag Fetching API after every 1 Minute
     private void setTimerForTag() {
         handler_tag = new Handler();
         final int delay = 60000; //milliseconds
@@ -145,21 +145,23 @@ public class MainActivity extends AppCompatActivity {
 
                     Log.e("UE Fetch Response:==> ", response);
 
-                    try {
+                    if (!response.equals("null")) {
 
-                        JSONObject jsonObject = new JSONObject(response);
+                        try {
 
-                        String tag_id= jsonObject.getString("tag_id");
-                        //String flag= jsonObject.getString("flag");
+                            JSONObject jsonObject = new JSONObject(response);
 
-                        showUserEnrollmentPopup(tag_id);
+                            String tag_id = jsonObject.getString("tag_id");
+                            String id= jsonObject.getString("id");
+
+                            showUserEnrollmentPopup(tag_id,id);
 
 
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
 
-                    } catch (JSONException e) {
-                        e.printStackTrace();
                     }
-
                 }
             }, new Response.ErrorListener() {
                 @Override
@@ -167,15 +169,15 @@ public class MainActivity extends AppCompatActivity {
                     //Toast.makeText(MainActivity.this, "Please Check IP Address", Toast.LENGTH_SHORT).show();
                     Log.e("UE Fetch Error:==> ", error+"");
                 }
-            }); //{
-//                @Override
-//                public Map<String, String> getHeaders() throws AuthFailureError {
-//                    Map<String, String> params = new HashMap<>();
-//                    params.put("reader", "0");
-//                    Log.e("Sending Data:==> ", params.toString());
-//                    return params;
-//                }
- //           };
+            }){
+                @Override
+                public Map<String, String> getHeaders() throws AuthFailureError {
+                    Map<String, String> params = new HashMap<>();
+                    params.put("reader", "0");
+                    Log.e("Sending Data:==> ", params.toString());
+                    return params;
+                }
+            };
 
             RequestQueue requestQueue = Volley.newRequestQueue(MainActivity.this);
             requestQueue.add(request);
@@ -185,7 +187,7 @@ public class MainActivity extends AppCompatActivity {
 
 
     //Popup for User Enrollment
-    private void showUserEnrollmentPopup(final String tag_id) {
+    private void showUserEnrollmentPopup(final String tag_id, final String id) {
 
         final Dialog dialog = new Dialog(MainActivity.this);
         dialog.requestWindowFeature(Window.FEATURE_NO_TITLE);
@@ -207,7 +209,7 @@ public class MainActivity extends AppCompatActivity {
 
                 if(!username.equals("")) {
 
-                    new sendResponseBAckUserEnrollment(tag_id,username).execute();
+                    new sendResponseBackUserEnrollment(tag_id,username,id).execute();
 
                     dialog.dismiss();
                 }
@@ -224,13 +226,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     //Sending data again to the Server for User Enrollment
-    private class sendResponseBAckUserEnrollment extends AsyncTask<Void,Void,Void> {
+    private class sendResponseBackUserEnrollment extends AsyncTask<Void,Void,Void> {
 
-        String tag_id,username;
+        String tag_id,username,id;
 
-        public sendResponseBAckUserEnrollment(String tag_id, String username) {
+        public sendResponseBackUserEnrollment(String tag_id, String username,String id) {
             this.tag_id = tag_id;
             this.username = username;
+            this.id=id;
         }
 
         @Override
@@ -249,7 +252,7 @@ public class MainActivity extends AppCompatActivity {
             try {
 
                 object.put("reader", "1");
-                object.put("tag_id", tag_id);
+                object.put("id", id);
                 object.put("user", username);
 
 
@@ -264,6 +267,19 @@ public class MainActivity extends AppCompatActivity {
                 public void onResponse(JSONObject response) {
 
                     Log.e("Feedback rspnse UE:==> ", response.toString());
+
+                    try {
+                        if (response.getInt("status")==0) {
+
+                            Toast.makeText(MainActivity.this, "Updated Successfully", Toast.LENGTH_SHORT).show();
+
+                        } else {
+                            Toast.makeText(MainActivity.this, "Try Again !!!", Toast.LENGTH_SHORT).show();
+                        }
+                    } catch (JSONException e) {
+                        e.printStackTrace();
+                    }
+                    
 
                 }
             }, new Response.ErrorListener() {
